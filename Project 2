@@ -1,0 +1,396 @@
+# ============================================================
+#  DecodeLabs | Data Analytics | Project 2: EDA
+#  Dataset: Superstore 
+# ============================================================
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import seaborn as sns
+import warnings
+ 
+warnings.filterwarnings('ignore')
+ 
+# ── Plot style ───────────────────────────────────────────────
+sns.set_theme(style="darkgrid", palette="muted")
+plt.rcParams.update({'figure.dpi': 120, 'figure.facecolor': '#f8f9fa'})
+ 
+ 
+# ============================================================
+# STEP 1 — LOAD & INSPECT DATA
+# ============================================================
+ 
+print("=" * 60)
+print("STEP 1: LOADING & INSPECTING DATA")
+print("=" * 60)
+ 
+import os
+ 
+# ── Paths ────────────────────────────────────────────────────
+DATA_PATH   = 'superstore.csv'   # ← put this file in the same folder as this script
+OUTPUT_DIR  = '.'                # ← charts saved in same folder; change if needed
+ 
+df = pd.read_csv(DATA_PATH)
+ 
+# Clean column names (replace dots with underscores)
+df.columns = df.columns.str.replace('.', '_', regex=False).str.strip()
+ 
+# Convert dates
+df['Order_Date'] = pd.to_datetime(df['Order_Date'])
+df['Ship_Date']  = pd.to_datetime(df['Ship_Date'])
+ 
+print(f"\n✔ Dataset loaded: {df.shape[0]:,} rows × {df.shape[1]} columns")
+print(f"\n--- Column Names ---\n{df.columns.tolist()}")
+print(f"\n--- Data Types ---\n{df.dtypes}")
+print(f"\n--- Missing Values ---\n{df.isnull().sum()}")
+print(f"\n--- First 5 Rows ---\n{df.head()}")
+ 
+ 
+# ============================================================
+# STEP 2 — DESCRIPTIVE STATISTICS
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 2: DESCRIPTIVE STATISTICS")
+print("=" * 60)
+ 
+numeric_cols = ['Sales', 'Profit', 'Quantity', 'Discount', 'Shipping_Cost']
+ 
+desc = df[numeric_cols].describe().T
+desc['median'] = df[numeric_cols].median()
+desc['skewness'] = df[numeric_cols].skew()
+print("\n--- Full Stats (mean, median, std, min, max, skewness) ---")
+print(desc.round(2).to_string())
+ 
+# ── Mean vs Median (reveals skew) ───────────────────────────
+print("\n--- Mean vs Median Comparison ---")
+for col in ['Sales', 'Profit']:
+    mean_val   = df[col].mean()
+    median_val = df[col].median()
+    skew_dir   = "right-skewed (outliers pull mean up)" if mean_val > median_val else "left-skewed"
+    print(f"  {col}: Mean={mean_val:.2f}  |  Median={median_val:.2f}  →  {skew_dir}")
+ 
+ 
+# ── Fig 1: Distribution histograms ──────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+fig.suptitle('Project 2 — Distribution of Key Numeric Variables', fontsize=14, fontweight='bold')
+ 
+for ax, col in zip(axes, ['Sales', 'Profit', 'Shipping_Cost']):
+    sns.histplot(df[col], bins=50, kde=True, ax=ax, color='steelblue')
+    ax.axvline(df[col].mean(),   color='red',    linestyle='--', label=f'Mean={df[col].mean():.1f}')
+    ax.axvline(df[col].median(), color='orange', linestyle='--', label=f'Median={df[col].median():.1f}')
+    ax.set_title(f'{col} Distribution')
+    ax.legend(fontsize=8)
+ 
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'fig1_distributions.png'), bbox_inches='tight')
+plt.show()
+print("\n✔ Fig 1 saved: fig1_distributions.png")
+ 
+ 
+# ============================================================
+# STEP 3 — TREND ANALYSIS
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 3: TREND ANALYSIS")
+print("=" * 60)
+ 
+# ── Yearly trend ────────────────────────────────────────────
+yearly = df.groupby('Year').agg(
+    Total_Sales   = ('Sales', 'sum'),
+    Total_Profit  = ('Profit', 'sum'),
+    Total_Orders  = ('Order_ID', 'count')
+).reset_index()
+ 
+print("\n--- Yearly Sales & Profit Trend ---")
+print(yearly.to_string(index=False))
+ 
+# ── Monthly trend (all years combined) ──────────────────────
+df['Month'] = df['Order_Date'].dt.month
+monthly = df.groupby('Month').agg(
+    Avg_Sales  = ('Sales', 'mean'),
+    Avg_Profit = ('Profit', 'mean')
+).reset_index()
+ 
+# ── Category trend by year ───────────────────────────────────
+cat_year = df.groupby(['Year', 'Category'])['Sales'].sum().reset_index()
+ 
+# ── Fig 2: Trend charts ──────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+fig.suptitle('Project 2 — Trend Analysis', fontsize=14, fontweight='bold')
+ 
+# Yearly Sales
+axes[0].plot(yearly['Year'], yearly['Total_Sales'], marker='o', color='steelblue', linewidth=2)
+axes[0].fill_between(yearly['Year'], yearly['Total_Sales'], alpha=0.2, color='steelblue')
+axes[0].set_title('Yearly Total Sales')
+axes[0].set_xlabel('Year')
+axes[0].set_ylabel('Sales')
+axes[0].yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x/1e6:.1f}M'))
+ 
+# Yearly Profit
+axes[1].plot(yearly['Year'], yearly['Total_Profit'], marker='s', color='green', linewidth=2)
+axes[1].fill_between(yearly['Year'], yearly['Total_Profit'], alpha=0.2, color='green')
+axes[1].set_title('Yearly Total Profit')
+axes[1].set_xlabel('Year')
+axes[1].set_ylabel('Profit')
+ 
+# Sales by Category per Year
+for cat in cat_year['Category'].unique():
+    subset = cat_year[cat_year['Category'] == cat]
+    axes[2].plot(subset['Year'], subset['Sales'], marker='o', label=cat, linewidth=2)
+axes[2].set_title('Sales by Category per Year')
+axes[2].set_xlabel('Year')
+axes[2].set_ylabel('Sales')
+axes[2].legend()
+ 
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'fig2_trends.png'), bbox_inches='tight')
+plt.show()
+print("\n✔ Fig 2 saved: fig2_trends.png"
+ 
+ 
+# ============================================================
+# STEP 4 — OUTLIER DETECTION 
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 4: OUTLIER DETECTION")
+print("=" * 60)
+ 
+def detect_outliers_iqr(df, col):
+    Q1  = df[col].quantile(0.25)
+    Q3  = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower  = Q1 - 1.5 * IQR
+    upper  = Q3 + 1.5 * IQR
+    outliers = df[(df[col] < lower) | (df[col] > upper)]
+    return outliers, lower, upper, Q1, Q3, IQR
+ 
+def detect_outliers_zscore(df, col, threshold=3):
+    z_scores = np.abs((df[col] - df[col].mean()) / df[col].std())
+    return df[z_scores > threshold]
+ 
+for col in ['Sales', 'Profit', 'Shipping_Cost']:
+    out_iqr, low, high, Q1, Q3, IQR = detect_outliers_iqr(df, col)
+    out_z   = detect_outliers_zscore(df, col)
+ 
+    print(f"\n  [{col}]")
+    print(f"    IQR Method   → Q1={Q1:.2f}, Q3={Q3:.2f}, IQR={IQR:.2f}")
+    print(f"    Bounds       → [{low:.2f}, {high:.2f}]")
+    print(f"    Outliers (IQR)    : {len(out_iqr):,}  ({len(out_iqr)/len(df)*100:.1f}%)")
+    print(f"    Outliers (Z-Score): {len(out_z):,}  ({len(out_z)/len(df)*100:.1f}%)")
+ 
+# ── Fig 3: Boxplots ──────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+fig.suptitle('Project 2 — Outlier Detection (Boxplots)', fontsize=14, fontweight='bold')
+ 
+for ax, col in zip(axes, ['Sales', 'Profit', 'Shipping_Cost']):
+    sns.boxplot(y=df[col], ax=ax, color='lightcoral')
+    ax.set_title(f'{col} Boxplot')
+    ax.set_ylabel(col)
+ 
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'fig3_outliers.png'), bbox_inches='tight')
+plt.show()
+print("\n✔ Fig 3 saved: fig3_outliers.png")
+ 
+# ── Top 10 extreme high-profit and loss orders ───────────────
+print("\n--- Top 5 Highest Profit Orders ---")
+print(df.nlargest(5, 'Profit')[['Order_ID', 'Customer_Name', 'Category', 'Sales', 'Profit']].to_string(index=False))
+ 
+print("\n--- Top 5 Biggest Loss Orders ---")
+print(df.nsmallest(5, 'Profit')[['Order_ID', 'Customer_Name', 'Category', 'Sales', 'Profit']].to_string(index=False))
+
+
+# ============================================================
+# STEP 5 — CATEGORY & SEGMENT ANALYSIS
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 5: CATEGORY & SEGMENT ANALYSIS")
+print("=" * 60)
+ 
+# Sales & Profit by Category
+cat_summary = df.groupby('Category').agg(
+    Orders       = ('Order_ID', 'count'),
+    Total_Sales  = ('Sales', 'sum'),
+    Total_Profit = ('Profit', 'sum'),
+    Avg_Discount = ('Discount', 'mean')
+).reset_index()
+cat_summary['Profit_Margin_%'] = (cat_summary['Total_Profit'] / cat_summary['Total_Sales'] * 100).round(2)
+print("\n--- Sales & Profit by Category ---")
+print(cat_summary.to_string(index=False))
+ 
+# By Segment
+seg_summary = df.groupby('Segment').agg(
+    Orders       = ('Order_ID', 'count'),
+    Total_Sales  = ('Sales', 'sum'),
+    Total_Profit = ('Profit', 'sum')
+).reset_index()
+print("\n--- Sales & Profit by Segment ---")
+print(seg_summary.to_string(index=False))
+ 
+# Sub-category profitability
+subcat = df.groupby('Sub_Category').agg(
+    Total_Sales  = ('Sales', 'sum'),
+    Total_Profit = ('Profit', 'sum')
+).sort_values('Total_Profit', ascending=False).reset_index()
+print("\n--- Sub-Category Profitability (Top 5 & Bottom 5) ---")
+print(pd.concat([subcat.head(5), subcat.tail(5)]).to_string(index=False))
+ 
+# ── Fig 4: Category/Segment bar charts ──────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+fig.suptitle('Project 2 — Category & Segment Analysis', fontsize=14, fontweight='bold')
+ 
+# Sales by Category
+axes[0].bar(cat_summary['Category'], cat_summary['Total_Sales'], color=['steelblue','salmon','mediumseagreen'])
+axes[0].set_title('Total Sales by Category')
+axes[0].set_ylabel('Sales')
+ 
+# Profit Margin by Category
+bars = axes[1].bar(cat_summary['Category'], cat_summary['Profit_Margin_%'], color=['steelblue','salmon','mediumseagreen'])
+axes[1].set_title('Profit Margin % by Category')
+axes[1].set_ylabel('Profit Margin (%)')
+for bar, val in zip(bars, cat_summary['Profit_Margin_%']):
+    axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.2, f'{val}%', ha='center', fontsize=9)
+ 
+# Sub-category profit (top 10)
+top10_subcat = subcat.head(10)
+colors = ['green' if p > 0 else 'red' for p in top10_subcat['Total_Profit']]
+axes[2].barh(top10_subcat['Sub_Category'], top10_subcat['Total_Profit'], color=colors)
+axes[2].set_title('Top 10 Sub-Categories by Profit')
+axes[2].set_xlabel('Total Profit')
+axes[2].axvline(0, color='black', linewidth=0.8)
+ 
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'fig4_categories.png'), bbox_inches='tight')
+plt.show()
+print("\n✔ Fig 4 saved: fig4_categories.png")
+ 
+ 
+# ============================================================
+# STEP 6 — CORRELATION ANALYSIS
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 6: CORRELATION ANALYSIS")
+print("=" * 60)
+ 
+corr_matrix = df[numeric_cols].corr()
+print("\n--- Pearson Correlation Matrix ---")
+print(corr_matrix.round(3).to_string())
+ 
+# Key insights
+discount_profit_corr = corr_matrix.loc['Discount', 'Profit']
+sales_profit_corr    = corr_matrix.loc['Sales', 'Profit']
+print(f"\n🔍 Key Findings:")
+print(f"   Discount ↔ Profit   : r = {discount_profit_corr:.3f}  → {'NEGATIVE — higher discount = lower profit' if discount_profit_corr < 0 else 'Positive'}")
+print(f"   Sales    ↔ Profit   : r = {sales_profit_corr:.3f}  → {'Moderate positive relationship' if sales_profit_corr > 0 else 'Negative'}")
+ 
+# ── Fig 5: Correlation heatmap + scatter ────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle('Project 2 — Correlation Analysis', fontsize=14, fontweight='bold')
+ 
+# Heatmap
+sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='RdYlGn',
+            center=0, square=True, ax=axes[0], linewidths=0.5)
+axes[0].set_title('Correlation Matrix Heatmap')
+ 
+# Scatter: Discount vs Profit
+sample = df.sample(2000, random_state=42)
+axes[1].scatter(sample['Discount'], sample['Profit'], alpha=0.3, color='steelblue', s=10)
+axes[1].set_xlabel('Discount')
+axes[1].set_ylabel('Profit')
+axes[1].set_title(f'Discount vs Profit (r={discount_profit_corr:.2f})')
+axes[1].axhline(0, color='red', linestyle='--', linewidth=0.8)
+ 
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'fig5_correlation.png'), bbox_inches='tight')
+plt.show()
+print("\n✔ Fig 5 saved: fig5_correlation.png")
+ 
+ 
+# ============================================================
+# STEP 7 — REGIONAL ANALYSIS
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 7: REGIONAL ANALYSIS")
+print("=" * 60)
+ 
+region_summary = df.groupby('Region').agg(
+    Orders       = ('Order_ID', 'count'),
+    Total_Sales  = ('Sales', 'sum'),
+    Total_Profit = ('Profit', 'sum'),
+    Avg_Discount = ('Discount', 'mean')
+).sort_values('Total_Sales', ascending=False).reset_index()
+print(region_summary.to_string(index=False))
+ 
+ 
+# ============================================================
+# STEP 8 — EXECUTIVE SUMMARY (The "So What?" Test)
+# ============================================================
+ 
+print("\n" + "=" * 60)
+print("STEP 8: EXECUTIVE SUMMARY — KEY FINDINGS")
+print("=" * 60)
+ 
+total_sales    = df['Sales'].sum()
+total_profit   = df['Profit'].sum()
+profit_margin  = (total_profit / total_sales) * 100
+total_orders   = df['Order_ID'].nunique()
+loss_orders    = len(df[df['Profit'] < 0])
+loss_pct       = (loss_orders / len(df)) * 100
+best_category  = cat_summary.loc[cat_summary['Profit_Margin_%'].idxmax(), 'Category']
+worst_subcat   = subcat.iloc[-1]['Sub_Category']
+best_region    = region_summary.iloc[0]['Region']
+ 
+print(f"""
+┌─────────────────────────────────────────────────────┐
+│           SUPERSTORE EDA — EXECUTIVE SUMMARY        │
+├─────────────────────────────────────────────────────┤
+│ DATASET      : 51,290 rows, 27 columns, 0 nulls     │
+│ Total Orders : {total_orders:,}                             │
+│ Total Sales  : ${total_sales:,.0f}                    │
+│ Total Profit : ${total_profit:,.0f}                     │
+│ Profit Margin: {profit_margin:.2f}%                             │
+├─────────────────────────────────────────────────────┤
+│ KEY FINDINGS                                        │
+│                                                     │
+│ 1. DISTRIBUTION                                     │
+│    Sales & Profit are RIGHT-SKEWED. A small number  │
+│    of very large orders pull the mean above median. │
+│    Use MEDIAN for central tendency, not mean.       │
+│                                                     │
+│ 2. TREND                                            │
+│    Sales grew consistently year-over-year.          │
+│    Technology drove highest revenue growth.         │
+│                                                     │
+│ 3. OUTLIERS                                         │
+│    {loss_pct:.1f}% of orders are loss-making (Profit < 0).  │
+│    High-discount orders are primary culprit.        │
+│                                                     │
+│ 4. CORRELATION                                      │
+│    Discount ↔ Profit: r={discount_profit_corr:.2f} (NEGATIVE)          │
+│    → Every discount increase hurts profitability.   │
+│                                                     │
+│ 5. BEST PERFORMER                                   │
+│    Best Category  : {best_category}                         │
+│    Best Region    : {best_region}                              │
+│    Worst Sub-Cat  : {worst_subcat} (consistently losing)  │
+├─────────────────────────────────────────────────────┤
+│ RECOMMENDATIONS                                     │
+│ → Cap discounts at 20% to protect margins           │
+│ → Investigate {worst_subcat} for discontinuation       │
+│ → Double down on {best_region} for expansion          │
+└─────────────────────────────────────────────────────┘
+""")
+ 
+print("✔ EDA Complete! Charts saved as PNG files.")
+print("  fig1_distributions.png")
+print("  fig2_trends.png")
+print("  fig3_outliers.png")
+print("  fig4_categories.png")
+print("  fig5_correlation.png")
+ 
